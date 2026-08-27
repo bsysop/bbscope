@@ -136,6 +136,11 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 		return p.FetchProgramScope(ctx, handle, opts)
 	}
 
+	// Extract program-level brief from rulesOfEngagement.content.description
+	if !opts.SkipBrief {
+		pData.Brief = gjson.Get(res.BodyString, "rulesOfEngagement.content.description").String()
+	}
+
 	// First pass: collect targets and determine if program is BBP.
 	// A program is BBP if at least one in-scope target has a tier other than "No Bounty".
 	type target struct {

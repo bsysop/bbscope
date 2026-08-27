@@ -100,6 +100,16 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 		return pData, err
 	}
 
+	// Extract program-level brief from the response.
+	if !opts.SkipBrief {
+		for _, field := range []string{"rules", "description", "policy", "text", "content"} {
+			if v := gjson.Get(res.BodyString, field).String(); v != "" {
+				pData.Brief = v
+				break
+			}
+		}
+	}
+
 	chunkData := gjson.GetMany(res.BodyString, "scopes.#.scope", "scopes.#.scope_type", "out_of_scope")
 
 	// Get the list of categories to filter by.

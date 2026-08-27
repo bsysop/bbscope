@@ -82,7 +82,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 
 func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts platforms.PollOptions) (scope.ProgramData, error) {
 	cats := "all"
-	pd, err := GetProgramScope(handle, cats, p.token)
+	pd, err := GetProgramScope(handle, cats, p.token, opts.SkipBrief)
 	if err != nil {
 		return scope.ProgramData{Url: strings.TrimPrefix(handle, "/")}, err
 	}

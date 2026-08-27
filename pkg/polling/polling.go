@@ -3,6 +3,7 @@ package polling
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/sw33tLie/bbscope/v2/pkg/ai"
@@ -30,12 +31,13 @@ func (nopLogger) Debugf(string, ...interface{}) {}
 
 // PlatformConfig holds everything PollPlatform needs for a single platform.
 type PlatformConfig struct {
-	Poller      platforms.PlatformPoller
-	Options     platforms.PollOptions
-	DB          *storage.DB
-	Concurrency int            // defaults to 5 if <= 0
-	Normalizer  ai.Normalizer  // optional
-	Log         Logger         // optional; nil = no logging
+	Poller        platforms.PlatformPoller
+	Options       platforms.PollOptions
+	DB            *storage.DB
+	Concurrency   int           // defaults to 5 if <= 0
+	Normalizer    ai.Normalizer // optional
+	Log           Logger        // optional; nil = no logging
+	ProgramFilter string        // if non-empty, only process handles containing this string
 
 	// OnProgramDone is called per-program after upsert+log (from worker goroutines).
 	// Enables CLI to stream-print changes as they happen. Nil = no callback.
@@ -45,10 +47,10 @@ type PlatformConfig struct {
 // PlatformResult holds the outcome of polling a single platform.
 type PlatformResult struct {
 	PolledProgramURLs     []string
-	ProgramChanges        []storage.Change  // all per-program changes accumulated
-	RemovedProgramChanges []storage.Change  // from SyncPlatformPrograms
+	ProgramChanges        []storage.Change // all per-program changes accumulated
+	RemovedProgramChanges []storage.Change // from SyncPlatformPrograms
 	IsFirstRun            bool
-	Errors                []error           // non-fatal errors
+	Errors                []error // non-fatal errors
 }
 
 // PollPlatform polls a single platform: lists handles, fetches scopes
@@ -92,13 +94,28 @@ func PollPlatform(ctx context.Context, cfg PlatformConfig) (*PlatformResult, err
 		log.Infof("First poll for %s, populating database...", p.Name())
 	}
 
+	// Filter to a single program if requested.
+	if cfg.ProgramFilter != "" {
+		var filtered []string
+		for _, h := range handles {
+			if strings.Contains(h, cfg.ProgramFilter) {
+				filtered = append(filtered, h)
+			}
+		}
+		handles = filtered
+		if len(handles) == 0 {
+			log.Warnf("No handles found matching program filter %q for platform %s", cfg.ProgramFilter, p.Name())
+			return result, nil
+		}
+	}
+
 	// Safety check: if poller returns 0 programs but DB has many, abort to
 	// prevent accidentally wiping all programs.
 	dbProgramCount, err := db.GetActiveProgramCount(ctx, p.Name())
 	if err != nil {
 		log.Warnf("Could not get program count for %s: %v", p.Name(), err)
 	}
-	if len(handles) == 0 && dbProgramCount > 10 {
+	if len(handles) == 0 && dbProgramCount > 10 && cfg.ProgramFilter == "" {
 		log.Errorf("Poller for %s returned 0 programs, but database has %d. Aborting sync for this platform to prevent data loss.", p.Name(), dbProgramCount)
 		return result, nil
 	}
@@ -233,7 +250,7 @@ func processOneProgram(
 		return nil, err
 	}
 
-	changes, err := db.UpsertProgramEntries(ctx, pd.Url, p.Name(), handle, entries)
+	changes, err := db.UpsertProgramEntries(ctx, pd.Url, p.Name(), handle, pd.Brief, entries)
 	if err != nil {
 		if errors.Is(err, storage.ErrAbortingScopeWipe) {
 			log.Warnf("Potential scope wipe detected for program %s. Skipping update.", pd.Url)

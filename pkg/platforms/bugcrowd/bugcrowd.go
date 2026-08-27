@@ -652,7 +652,7 @@ func GetProgramHandles(sessionToken string, engagementType string, pvtOnly bool)
 	return paths, nil
 }
 
-func GetProgramScope(handle string, categories string, token string) (pData scope.ProgramData, err error) {
+func GetProgramScope(handle string, categories string, token string, skipBrief bool) (pData scope.ProgramData, err error) {
 	handle = normalizeBugcrowdHandle(handle)
 	isEngagement := strings.HasPrefix(handle, "/engagements/")
 	if isEngagement {
@@ -672,7 +672,7 @@ func GetProgramScope(handle string, categories string, token string) (pData scop
 		}
 
 		if getBriefVersionDocument != "" {
-			err = extractScopeFromEngagement(getBriefVersionDocument, token, &pData)
+			err = extractScopeFromEngagement(getBriefVersionDocument, token, skipBrief, &pData)
 			if err != nil {
 				return pData, err
 			}
@@ -761,7 +761,7 @@ func getEngagementBriefVersionDocument(handle string, token string) (string, err
 	return gjson.Get(apiEndpointsJSON, "engagementBriefApi.getBriefVersionDocument").String() + ".json", nil
 }
 
-func extractScopeFromEngagement(getBriefVersionDocument string, token string, pData *scope.ProgramData) (err error) {
+func extractScopeFromEngagement(getBriefVersionDocument string, token string, skipBrief bool, pData *scope.ProgramData) (err error) {
 	if getBriefVersionDocument == ".json" {
 		utils.Log.Warn("Compliance required! Empty Extraction URL (Skipping)...")
 		pData.InScope = append(pData.InScope, scope.ScopeElement{
@@ -791,6 +791,33 @@ func extractScopeFromEngagement(getBriefVersionDocument string, token string, pD
 
 	if res.StatusCode == 403 || res.StatusCode == 406 {
 		return errors.New(WAF_BANNED_ERROR)
+	}
+
+	// Extract program brief (skipped on daily polls; use --brief for monthly updates).
+	if !skipBrief {
+		if pData.Brief == "" {
+			pData.Brief = gjson.Get(res.BodyString, "data.brief.description").String()
+			if pData.Brief == "" {
+				pData.Brief = gjson.Get(res.BodyString, "data.brief.tagline").String()
+			}
+		}
+
+		// Append the targets overview: scope notes, out-of-scope reporting URLs, and
+		// security-contact emails (e.g. wls-security@sap.com). Bugcrowd keeps this in a
+		// field separate from the description, so it must be captured explicitly or the
+		// contact/reporting instructions are lost.
+		if tov := gjson.Get(res.BodyString, "data.brief.targetsOverview").String(); tov != "" {
+			pData.Brief += "\n\n" + tov
+		}
+
+		// Collect scope group descriptionHtml values (e.g. out-of-scope vulnerability types).
+		// These describe what the program will NOT accept, separate from the target list.
+		gjson.Get(res.BodyString, "data.scope").ForEach(func(_, group gjson.Result) bool {
+			if html := group.Get("descriptionHtml").String(); html != "" {
+				pData.Brief += "\n\n" + html
+			}
+			return true
+		})
 	}
 
 	// Extract the "scope" array from the JSON

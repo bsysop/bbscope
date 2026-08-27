@@ -18,6 +18,7 @@ type ScopeElement struct {
 
 type ProgramData struct {
 	Url        string
+	Brief      string
 	InScope    []ScopeElement
 	OutOfScope []ScopeElement
 }
