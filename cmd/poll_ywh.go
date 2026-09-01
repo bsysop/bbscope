@@ -22,9 +22,12 @@ var pollYwhCmd = &cobra.Command{
 		if proxy != "" {
 			whttp.SetupProxy(proxy)
 		}
-		// Validate auth: require either token OR (email+password+otp-secret)
-		if token == "" && (email == "" || password == "" || otpSecret == "") {
-			utils.Log.Error("yeswehack requires either token or email+password+otp-secret")
+		// Auth is optional: the public API serves public programs unauthenticated.
+		// A token or email+password+otp-secret is only needed for private programs.
+		if token == "" && email == "" && password == "" && otpSecret == "" {
+			utils.Log.Info("No YesWeHack credentials provided; polling public programs unauthenticated")
+		} else if token == "" && (email == "" || password == "" || otpSecret == "") {
+			utils.Log.Error("yeswehack authenticated mode requires either token or email+password+otp-secret")
 			return nil
 		}
 
