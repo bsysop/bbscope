@@ -1,6 +1,6 @@
 module github.com/sw33tLie/bbscope/v2
 
-go 1.24.0
+go 1.27.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.6.1
