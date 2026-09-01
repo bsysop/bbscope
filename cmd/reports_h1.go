@@ -102,7 +102,7 @@ func runReportsH1(ctx context.Context, fetcher *reports.H1Fetcher, opts reports.
 	close(jobs)
 
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
+	for range workers {
 		wg.Go(func() {
 			for i := range jobs {
 				s := summaries[i]
