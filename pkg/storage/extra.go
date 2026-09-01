@@ -98,7 +98,7 @@ type ProgramListResult struct {
 
 // ProgramTarget represents a single target within a program detail view.
 type ProgramTarget struct {
-	TargetDisplay string `json:"target"`     // AI-normalized if available, else raw
+	TargetDisplay string `json:"target"` // AI-normalized if available, else raw
 	TargetRaw     string `json:"target_raw"`
 	Category      string `json:"category"`
 	Description   string `json:"description"`
@@ -298,10 +298,7 @@ func (d *DB) ListProgramsPaginated(ctx context.Context, opts ProgramListOptions)
 		opts.Page = 1
 	}
 
-	totalPages := (totalCount + opts.PerPage - 1) / opts.PerPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
+	totalPages := max((totalCount+opts.PerPage-1)/opts.PerPage, 1)
 
 	// Sort column mapping
 	sortColumn := "LOWER(p.handle)"
@@ -529,7 +526,7 @@ func (d *DB) ListProgramTargetsFromHistory(ctx context.Context, platform, handle
 // ListProgramChanges returns recent scope changes for a specific program.
 func (d *DB) ListProgramChanges(ctx context.Context, platform, handle string, limit int) ([]Change, error) {
 	var query string
-	var args []interface{}
+	var args []any
 	if limit > 0 {
 		query = `SELECT occurred_at, program_url, platform, handle,
 			target_normalized, target_raw, target_ai_normalized,
@@ -538,7 +535,7 @@ func (d *DB) ListProgramChanges(ctx context.Context, platform, handle string, li
 			WHERE LOWER(platform) = LOWER($1) AND LOWER(handle) = LOWER($2)
 			ORDER BY occurred_at DESC
 			LIMIT $3`
-		args = []interface{}{platform, handle, limit}
+		args = []any{platform, handle, limit}
 	} else {
 		query = `SELECT occurred_at, program_url, platform, handle,
 			target_normalized, target_raw, target_ai_normalized,
@@ -546,7 +543,7 @@ func (d *DB) ListProgramChanges(ctx context.Context, platform, handle string, li
 			FROM scope_changes
 			WHERE LOWER(platform) = LOWER($1) AND LOWER(handle) = LOWER($2)
 			ORDER BY occurred_at DESC`
-		args = []interface{}{platform, handle}
+		args = []any{platform, handle}
 	}
 
 	rows, err := d.sql.QueryContext(ctx, query, args...)

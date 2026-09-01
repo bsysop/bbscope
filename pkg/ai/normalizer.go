@@ -152,10 +152,7 @@ func (n *openAINormalizer) NormalizeTargets(ctx context.Context, info ProgramInf
 
 	var chunks []chunkWork
 	for start := 0; start < len(items); start += n.maxBatchSize {
-		end := start + n.maxBatchSize
-		if end > len(items) {
-			end = len(items)
-		}
+		end := min(start+n.maxBatchSize, len(items))
 		chunks = append(chunks, chunkWork{
 			index: len(chunks),
 			start: start,

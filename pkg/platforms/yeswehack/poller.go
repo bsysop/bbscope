@@ -3,6 +3,7 @@ package yeswehack
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -63,7 +64,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 		allPublic := data[2].Array()
 		allDisabled := data[3].Array()
 
-		for i := 0; i < len(allCompanySlugs); i++ {
+		for i := range allCompanySlugs {
 			if allDisabled[i].Bool() {
 				continue
 			}
@@ -123,13 +124,7 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 		}
 
 		// Otherwise, check if the scopeType from the API is in our list of selected categories.
-		catMatches := false
-		for _, cat := range selectedCategories {
-			if cat == scopeType {
-				catMatches = true
-				break
-			}
-		}
+		catMatches := slices.Contains(selectedCategories, scopeType)
 
 		if catMatches {
 			pData.InScope = append(pData.InScope, scope.ScopeElement{

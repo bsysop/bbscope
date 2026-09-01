@@ -14,28 +14,28 @@ import (
 // Logger abstracts logging so callers can use logrus, stdlib log, or any
 // other logger that satisfies this interface.
 type Logger interface {
-	Infof(format string, args ...interface{})
-	Warnf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
-	Debugf(format string, args ...interface{})
+	Infof(format string, args ...any)
+	Warnf(format string, args ...any)
+	Errorf(format string, args ...any)
+	Debugf(format string, args ...any)
 }
 
 // nopLogger silently discards all messages.
 type nopLogger struct{}
 
-func (nopLogger) Infof(string, ...interface{})  {}
-func (nopLogger) Warnf(string, ...interface{})  {}
-func (nopLogger) Errorf(string, ...interface{}) {}
-func (nopLogger) Debugf(string, ...interface{}) {}
+func (nopLogger) Infof(string, ...any)  {}
+func (nopLogger) Warnf(string, ...any)  {}
+func (nopLogger) Errorf(string, ...any) {}
+func (nopLogger) Debugf(string, ...any) {}
 
 // PlatformConfig holds everything PollPlatform needs for a single platform.
 type PlatformConfig struct {
 	Poller      platforms.PlatformPoller
 	Options     platforms.PollOptions
 	DB          *storage.DB
-	Concurrency int            // defaults to 5 if <= 0
-	Normalizer  ai.Normalizer  // optional
-	Log         Logger         // optional; nil = no logging
+	Concurrency int           // defaults to 5 if <= 0
+	Normalizer  ai.Normalizer // optional
+	Log         Logger        // optional; nil = no logging
 
 	// OnProgramDone is called per-program after upsert+log (from worker goroutines).
 	// Enables CLI to stream-print changes as they happen. Nil = no callback.
@@ -45,10 +45,10 @@ type PlatformConfig struct {
 // PlatformResult holds the outcome of polling a single platform.
 type PlatformResult struct {
 	PolledProgramURLs     []string
-	ProgramChanges        []storage.Change  // all per-program changes accumulated
-	RemovedProgramChanges []storage.Change  // from SyncPlatformPrograms
+	ProgramChanges        []storage.Change // all per-program changes accumulated
+	RemovedProgramChanges []storage.Change // from SyncPlatformPrograms
 	IsFirstRun            bool
-	Errors                []error           // non-fatal errors
+	Errors                []error // non-fatal errors
 }
 
 // PollPlatform polls a single platform: lists handles, fetches scopes
@@ -151,10 +151,8 @@ func processProgramsConcurrently(
 	var allErrors []error
 
 	var wg sync.WaitGroup
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrency {
+		wg.Go(func() {
 			for h := range handleChan {
 				changes, err := processOneProgram(ctx, p, h, opts, db, ignoredPrograms, isFirstRun, normalizer, log)
 				if err != nil {
@@ -177,7 +175,7 @@ func processProgramsConcurrently(
 					onDone(changes.programURL, changes.changes, isFirstRun)
 				}
 			}
-		}()
+		})
 	}
 
 	for _, h := range handles {

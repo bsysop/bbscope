@@ -85,7 +85,6 @@ func TestNormalizerScenarios(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			out := mergeNormalized(tc.input, tc.baseID, tc.norm)
 			if !reflect.DeepEqual(out, tc.expected) {
