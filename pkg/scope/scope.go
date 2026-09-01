@@ -76,6 +76,13 @@ var unificationMap = map[string][]string{
 	"other":      {"other", "aws_cloud_config", "application", "network"},
 }
 
+// inputAliases accepts alternate --category spellings, mapped to unified names.
+var inputAliases = map[string][]string{
+	"apple":  {"ios"},
+	"device": {"hardware"},
+	"mobile": {"android", "ios"},
+}
+
 // categoryMap is a reverse map generated from unificationMap for efficient lookups.
 var categoryMap map[string]string
 var unifiedCategoryList []string
@@ -134,15 +141,27 @@ func GetAllStringsForCategories(input string) []string {
 	for _, rawCategory := range rawCategories {
 		categoryKey := strings.TrimSpace(rawCategory)
 
-		// Look up in the unificationMap
-		platformSpecificStrings, ok := unificationMap[categoryKey]
+		unifiedKeys, ok := inputAliases[categoryKey]
 		if !ok {
-			utils.Log.Warnf("Invalid category '%s' selected, it will be ignored.", categoryKey)
-			continue // Skip invalid category
+			unifiedKeys = []string{categoryKey}
 		}
 
-		for _, s := range platformSpecificStrings {
-			finalCategoriesSet[s] = true
+		matched := false
+		for _, unifiedKey := range unifiedKeys {
+			// Look up in the unificationMap
+			platformSpecificStrings, ok := unificationMap[unifiedKey]
+			if !ok {
+				continue
+			}
+			matched = true
+
+			for _, s := range platformSpecificStrings {
+				finalCategoriesSet[s] = true
+			}
+		}
+
+		if !matched {
+			utils.Log.Warnf("Invalid category '%s' selected, it will be ignored.", categoryKey)
 		}
 	}
 

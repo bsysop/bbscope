@@ -20,6 +20,10 @@ func TestGetCategoryIDs(t *testing.T) {
 		{"duplicates", "url,url", []int{1}},
 		{"invalid ones are ignored", "url,nonsense", []int{1}},
 		{"mobile categories", "android,ios", []int{2, 3}},
+		{"apple alias", "apple", []int{3}},
+		{"device alias", "device", []int{5}},
+		{"mobile alias", "mobile", []int{2, 3}},
+		{"alias in a list", "mobile,cidr", []int{2, 3, 4}},
 		{"unsupported on intigriti", "blockchain", []int{}},
 	}
 
