@@ -13,6 +13,13 @@ import (
 var pollYwhCmd = &cobra.Command{
 	Use:   "ywh",
 	Short: "Poll YesWeHack programs",
+	PreRunE: func(cmd *cobra.Command, _ []string) error {
+		return bindViperFlags(cmd, map[string]string{
+			"yeswehack.email":     "email",
+			"yeswehack.password":  "password",
+			"yeswehack.otpsecret": "otp-secret",
+		})
+	},
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		token, _ := cmd.Flags().GetString("token") // Token is CLI-only, not from config
 		email := viper.GetString("yeswehack.email")
@@ -42,7 +49,4 @@ func init() {
 	pollYwhCmd.Flags().StringP("email", "E", "", "YesWeHack login email")
 	pollYwhCmd.Flags().StringP("password", "P", "", "YesWeHack login password")
 	pollYwhCmd.Flags().StringP("otp-secret", "O", "", "YesWeHack TOTP secret (base32)")
-	viper.BindPFlag("yeswehack.email", pollYwhCmd.Flags().Lookup("email"))
-	viper.BindPFlag("yeswehack.password", pollYwhCmd.Flags().Lookup("password"))
-	viper.BindPFlag("yeswehack.otpsecret", pollYwhCmd.Flags().Lookup("otp-secret"))
 }

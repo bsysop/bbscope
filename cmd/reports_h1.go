@@ -18,6 +18,12 @@ import (
 var reportsH1Cmd = &cobra.Command{
 	Use:   "h1",
 	Short: "Download reports from HackerOne",
+	PreRunE: func(cmd *cobra.Command, _ []string) error {
+		return bindViperFlags(cmd, map[string]string{
+			"hackerone.username": "user",
+			"hackerone.token":    "token",
+		})
+	},
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		user := viper.GetString("hackerone.username")
 		token := viper.GetString("hackerone.token")
@@ -59,8 +65,6 @@ func init() {
 	reportsCmd.AddCommand(reportsH1Cmd)
 	reportsH1Cmd.Flags().StringP("user", "u", "", "HackerOne username")
 	reportsH1Cmd.Flags().StringP("token", "t", "", "HackerOne API token")
-	viper.BindPFlag("hackerone.username", reportsH1Cmd.Flags().Lookup("user"))
-	viper.BindPFlag("hackerone.token", reportsH1Cmd.Flags().Lookup("token"))
 }
 
 func runReportsH1(ctx context.Context, fetcher *reports.H1Fetcher, opts reports.FetchOptions) error {
