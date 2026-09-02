@@ -97,7 +97,17 @@ func TestNormalizerScenarios(t *testing.T) {
 	t.Run("sanitize deduplicates", func(t *testing.T) {
 		in := []string{"Example.COM ", " example.com", "  "}
 		out := sanitizeTargets(in)
-		if len(out) != 1 || out[0] != "example.com" {
+		if !reflect.DeepEqual(out, []string{"Example.COM"}) {
+			t.Fatalf("sanitize failed: %v", out)
+		}
+	})
+
+	// Casing is the model's call: it lowercases domains but keeps descriptive
+	// text verbatim, so sanitizeTargets must not lowercase on its own.
+	t.Run("sanitize preserves casing", func(t *testing.T) {
+		in := []string{"Any other asset is Out of Scope"}
+		out := sanitizeTargets(in)
+		if !reflect.DeepEqual(out, in) {
 			t.Fatalf("sanitize failed: %v", out)
 		}
 	})
