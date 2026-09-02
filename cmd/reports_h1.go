@@ -93,10 +93,7 @@ func runReportsH1(ctx context.Context, fetcher *reports.H1Fetcher, opts reports.
 	var written, skipped, errored atomic.Int32
 	total := len(summaries)
 
-	workers := 10
-	if total < workers {
-		workers = total
-	}
+	workers := min(total, 10)
 
 	jobs := make(chan int, total)
 	for i := range summaries {
@@ -105,10 +102,8 @@ func runReportsH1(ctx context.Context, fetcher *reports.H1Fetcher, opts reports.
 	close(jobs)
 
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			for i := range jobs {
 				s := summaries[i]
 				utils.Log.Infof("[%d/%d] Fetching report %s: %s", i+1, total, s.ID, s.Title)
@@ -133,7 +128,7 @@ func runReportsH1(ctx context.Context, fetcher *reports.H1Fetcher, opts reports.
 					skipped.Add(1)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

@@ -3,6 +3,7 @@ package intigriti
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -221,10 +222,5 @@ func getCategoryID(input string) []int {
 }
 
 func isInArray(val int, array []int) bool {
-	for _, item := range array {
-		if item == val {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(array, val)
 }

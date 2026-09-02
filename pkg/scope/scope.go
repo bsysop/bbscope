@@ -39,25 +39,25 @@ func PrintProgramScope(programScope ProgramData, outputFlags string, delimiter s
 }
 
 func createLine(scopeElement ScopeElement, url, outputFlags, delimiter string) string {
-	var line string
+	var line strings.Builder
 	// Unify category before printing
 	unifiedCategory := NormalizeCategory(scopeElement.Category)
 
 	for _, f := range outputFlags {
 		switch f {
 		case 't':
-			line += scopeElement.Target + delimiter
+			line.WriteString(scopeElement.Target + delimiter)
 		case 'd':
-			line += scopeElement.Description + delimiter
+			line.WriteString(scopeElement.Description + delimiter)
 		case 'c':
-			line += unifiedCategory + delimiter
+			line.WriteString(unifiedCategory + delimiter)
 		case 'u':
-			line += url + delimiter
+			line.WriteString(url + delimiter)
 		default:
 			log.Fatal("Invalid print flag")
 		}
 	}
-	return strings.TrimSuffix(line, delimiter)
+	return strings.TrimSuffix(line.String(), delimiter)
 }
 
 // unificationMap is the source of truth for category normalization.
@@ -129,9 +129,9 @@ func GetAllStringsForCategories(input string) []string {
 	finalCategoriesSet := make(map[string]bool)
 
 	// Split comma-separated values
-	rawCategories := strings.Split(input, ",")
+	rawCategories := strings.SplitSeq(input, ",")
 
-	for _, rawCategory := range rawCategories {
+	for rawCategory := range rawCategories {
 		categoryKey := strings.TrimSpace(rawCategory)
 
 		// Look up in the unificationMap

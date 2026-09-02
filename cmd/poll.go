@@ -238,9 +238,7 @@ func runPollNoDB(cmd *cobra.Command, pollers []platforms.PlatformPoller, opts pl
 		handleChan := make(chan string, len(handles))
 		var wg sync.WaitGroup
 		for i := 0; i < concurrency; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for h := range handleChan {
 					pd, err := p.FetchProgramScope(ctx, h, opts)
 					if err != nil {
@@ -249,7 +247,7 @@ func runPollNoDB(cmd *cobra.Command, pollers []platforms.PlatformPoller, opts pl
 					}
 					scope.PrintProgramScope(pd, output, delimiter, oos)
 				}
-			}()
+			})
 		}
 		for _, h := range handles {
 			handleChan <- h

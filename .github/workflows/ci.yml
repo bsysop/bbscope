@@ -37,6 +37,9 @@ jobs:
     - name: Vet
       run: go vet ./...
 
+    - name: Fix
+      run: go fix -diff ./...
+
     - name: Test
       run: go test -race ./...
 

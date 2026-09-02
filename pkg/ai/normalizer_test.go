@@ -1,7 +1,8 @@
 package ai
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"reflect"
 	"testing"
 
@@ -84,7 +85,6 @@ func TestNormalizerScenarios(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			out := mergeNormalized(tc.input, tc.baseID, tc.norm)
 			if !reflect.DeepEqual(out, tc.expected) {
@@ -114,6 +114,6 @@ func TestNormalizerScenarios(t *testing.T) {
 }
 
 func mustJSON(v any) string {
-	data, _ := json.MarshalIndent(v, "", "  ")
+	data, _ := json.Marshal(v, jsontext.WithIndent("  "))
 	return string(data)
 }
