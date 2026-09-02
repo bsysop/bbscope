@@ -148,6 +148,8 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 	var targets []target
 	isBBP := false
 
+	allowedCategories := getCategoryIDs(opts.Categories)
+
 	contentArray := gjson.Get(res.BodyString, "domains.content")
 	contentArray.ForEach(func(key, value gjson.Result) bool {
 		endpoint := value.Get("endpoint").String()
@@ -158,7 +160,6 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 		description := value.Get("description").Str
 
 		if tierID != 5 { // Not out-of-scope
-			allowedCategories := getCategoryID(opts.Categories)
 			if allowedCategories == nil || isInArray(int(categoryID), allowedCategories) {
 				targets = append(targets, target{
 					endpoint:    endpoint,
@@ -198,27 +199,36 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 
 	return pData, nil
 }
-func getCategoryID(input string) []int {
-	input = strings.ToLower(input)
-	if input == "all" || input == "" {
+
+// Unified categories to the type IDs used in domains.content[].type.id.
+var typeIDs = map[string][]int{
+	"url":      {1},
+	"android":  {2},
+	"ios":      {3},
+	"cidr":     {4},
+	"hardware": {5},
+	"other":    {6},
+	"wildcard": {7},
+}
+
+// A nil return means no filtering, an empty slice means nothing matches.
+func getCategoryIDs(input string) []int {
+	selected := scope.GetAllStringsForCategories(input)
+	if selected == nil {
 		return nil
 	}
 
-	categories := map[string][]int{
-		"url":      {1},
-		"cidr":     {4},
-		"mobile":   {2, 3},
-		"android":  {2},
-		"apple":    {3},
-		"device":   {5},
-		"other":    {6},
-		"wildcard": {7},
+	ids := []int{}
+	seen := map[int]bool{}
+	for _, raw := range selected {
+		for _, id := range typeIDs[scope.NormalizeCategory(raw)] {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
 	}
-	selected, ok := categories[input]
-	if !ok {
-		return nil // Default to all if category is invalid
-	}
-	return selected
+	return ids
 }
 
 func isInArray(val int, array []int) bool {
