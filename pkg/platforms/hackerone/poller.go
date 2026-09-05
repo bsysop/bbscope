@@ -93,6 +93,19 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 
 func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts platforms.PollOptions) (scope.ProgramData, error) {
 	pData := scope.ProgramData{Url: "https://hackerone.com/" + handle}
+
+	// Fetch program policy/brief (skipped on daily polls; use --brief for monthly updates).
+	if !opts.SkipBrief {
+		policyRes, err := whttp.SendHTTPRequest(&whttp.WHTTPReq{
+			Method:  "GET",
+			URL:     "https://api.hackerone.com/v1/hackers/programs/" + handle,
+			Headers: []whttp.WHTTPHeader{{Name: "Authorization", Value: "Basic " + p.authB64}},
+		}, nil)
+		if err == nil && policyRes != nil {
+			pData.Brief = gjson.Get(policyRes.BodyString, "attributes.policy").String()
+		}
+	}
+
 	currentPageURL := "https://api.hackerone.com/v1/hackers/programs/" + handle + "/structured_scopes?page%5Bnumber%5D=1&page%5Bsize%5D=100"
 	categoryStrings := scope.GetAllStringsForCategories(opts.Categories)
 

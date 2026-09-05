@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -83,6 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_changes_category_program ON scope_changes(categor
 CREATE INDEX IF NOT EXISTS idx_programs_platform_handle ON programs(platform, handle);
 CREATE INDEX IF NOT EXISTS idx_programs_disabled_ignored ON programs(disabled, is_ignored);
 CREATE INDEX IF NOT EXISTS idx_targets_raw_in_scope ON targets_raw(program_id, in_scope);
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS brief TEXT NOT NULL DEFAULT '';
 `
 
 func Open(connectionString string) (*DB, error) {
@@ -117,20 +119,29 @@ func Open(connectionString string) (*DB, error) {
 
 // createDatabase connects to the default "postgres" database and creates the target database
 func createDatabase(connectionString string) error {
-	parsed, err := url.Parse(connectionString)
-	if err != nil {
-		return fmt.Errorf("parsing connection string: %w", err)
-	}
+	var dbName, adminConnStr string
 
-	// Extract database name from path (e.g., "/bbscope" -> "bbscope")
-	dbName := strings.TrimPrefix(parsed.Path, "/")
+	// Try URL format first; fall back to keyword=value DSN parsing.
+	if u, err := url.Parse(connectionString); err == nil && strings.HasPrefix(u.Scheme, "postgres") {
+		dbName = strings.TrimPrefix(u.Path, "/")
+		if dbName == "" {
+			return errors.New("no database name in connection string")
+		}
+		u.Path = "/postgres"
+		adminConnStr = u.String()
+	} else {
+		// keyword=value format: extract dbname=<value>
+		kvre := regexp.MustCompile(`(?i)\bdbname=(\S+)`)
+		m := kvre.FindStringSubmatch(connectionString)
+		if len(m) < 2 {
+			return errors.New("no database name in connection string")
+		}
+		dbName = m[1]
+		adminConnStr = kvre.ReplaceAllString(connectionString, "dbname=postgres")
+	}
 	if dbName == "" {
 		return errors.New("no database name in connection string")
 	}
-
-	// Create connection string for the default "postgres" database
-	parsed.Path = "/postgres"
-	adminConnStr := parsed.String()
 
 	adminDB, err := sql.Open("postgres", adminConnStr)
 	if err != nil {
@@ -159,7 +170,7 @@ func (d *DB) Close() error {
 }
 
 // getOrCreateProgram handles the atomic retrieval or creation of a program entry.
-func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handle string) (int64, error) {
+func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handle, brief string) (int64, error) {
 	tx, err := d.sql.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return 0, err
@@ -168,15 +179,16 @@ func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handl
 
 	var programID int64
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO programs(platform, handle, url, first_seen_at, last_seen_at)
-		VALUES($1,$2,$3,CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		INSERT INTO programs(platform, handle, url, brief, first_seen_at, last_seen_at)
+		VALUES($1,$2,$3,$4,CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(url) DO UPDATE SET
 			platform = excluded.platform,
 			handle = excluded.handle,
 			last_seen_at = CURRENT_TIMESTAMP,
-			disabled = 0
+			disabled = 0,
+			brief = CASE WHEN excluded.brief != '' THEN excluded.brief ELSE programs.brief END
 		RETURNING id
-	`, platform, handle, programURL)
+	`, platform, handle, programURL, brief)
 	if err := row.Scan(&programID); err != nil {
 		return 0, fmt.Errorf("upserting program: %w", err)
 	}
@@ -184,11 +196,11 @@ func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handl
 	return programID, tx.Commit()
 }
 
-func (d *DB) UpsertProgramEntries(ctx context.Context, programURL, platform, handle string, entries []UpsertEntry) ([]Change, error) {
+func (d *DB) UpsertProgramEntries(ctx context.Context, programURL, platform, handle, brief string, entries []UpsertEntry) ([]Change, error) {
 	now := time.Now().UTC()
 
 	// 1. Get or create program
-	programID, err := d.getOrCreateProgram(ctx, programURL, platform, handle)
+	programID, err := d.getOrCreateProgram(ctx, programURL, platform, handle, brief)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get or create program: %w", err)
 	}

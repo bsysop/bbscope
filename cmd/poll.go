@@ -120,6 +120,8 @@ func init() {
 	pollCmd.PersistentFlags().BoolP("bbp-only", "b", false, "Only fetch programs offering monetary rewards")
 	pollCmd.PersistentFlags().BoolP("private-only", "p", false, "Only fetch data from private programs")
 	pollCmd.PersistentFlags().Bool("ai", false, "Enable LLM-assisted normalization (requires ai.api_key or OPENAI_API_KEY)")
+	pollCmd.PersistentFlags().String("program", "", "Only fetch scope for programs whose handle contains this string (e.g. 't-mobile')")
+	pollCmd.PersistentFlags().Bool("brief", false, "Fetch and update program briefs (descriptions). Off by default; run monthly with this flag")
 }
 
 // runPollWithPollers executes the polling flow using the provided pollers.
@@ -130,10 +132,13 @@ func runPollWithPollers(cmd *cobra.Command, pollers []platforms.PlatformPoller) 
 
 	bbpOnly, _ := cmd.Flags().GetBool("bbp-only")
 	pvtOnly, _ := cmd.Flags().GetBool("private-only")
+	brief, _ := cmd.Flags().GetBool("brief")
+	programFilter, _ := cmd.Flags().GetString("program")
 	opts := platforms.PollOptions{
 		Categories:  categories,
 		BountyOnly:  bbpOnly,
 		PrivateOnly: pvtOnly,
+		SkipBrief:   !brief,
 	}
 
 	if !useDB {
@@ -183,12 +188,13 @@ func runPollWithPollers(cmd *cobra.Command, pollers []platforms.PlatformPoller) 
 		utils.Log.Infof("Fetching scope from %s...", p.Name())
 
 		result, err := polling.PollPlatform(ctx, polling.PlatformConfig{
-			Poller:      p,
-			Options:     opts,
-			DB:          db,
-			Concurrency: concurrency,
-			Normalizer:  aiNormalizer,
-			Log:         utils.Log,
+			Poller:        p,
+			Options:       opts,
+			DB:            db,
+			Concurrency:   concurrency,
+			Normalizer:    aiNormalizer,
+			Log:           utils.Log,
+			ProgramFilter: programFilter,
 			OnProgramDone: func(programURL string, changes []storage.Change, isFirstRun bool) {
 				if !isFirstRun {
 					printChanges(changes)
@@ -226,6 +232,7 @@ func runPollNoDB(cmd *cobra.Command, pollers []platforms.PlatformPoller, opts pl
 	output, _ := cmd.Flags().GetString("output")
 	delimiter, _ := cmd.Flags().GetString("delimiter")
 	oos, _ := cmd.Flags().GetBool("oos")
+	programFilter, _ := cmd.Flags().GetString("program")
 
 	for _, p := range pollers {
 		utils.Log.Infof("Fetching scope from %s...", p.Name())
@@ -233,6 +240,16 @@ func runPollNoDB(cmd *cobra.Command, pollers []platforms.PlatformPoller, opts pl
 		handles, err := p.ListProgramHandles(ctx, opts)
 		if err != nil {
 			return err
+		}
+
+		if programFilter != "" {
+			var filtered []string
+			for _, h := range handles {
+				if strings.Contains(h, programFilter) {
+					filtered = append(filtered, h)
+				}
+			}
+			handles = filtered
 		}
 
 		handleChan := make(chan string, len(handles))

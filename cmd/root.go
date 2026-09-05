@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/sw33tLie/bbscope/v2/internal/utils"
@@ -124,6 +126,7 @@ func initConfig() {
 	viper.SetDefault("ai.max_batch", 25)
 	viper.SetDefault("ai.max_concurrency", 3)
 	viper.SetDefault("db_url", "")
+	viper.SetDefault("db_password", "")
 
 	// Init log library
 	levelString, _ := rootCmd.PersistentFlags().GetString("loglevel")
@@ -136,12 +139,53 @@ func initConfig() {
 }
 
 func GetDBConnectionString() (string, error) {
-	url := viper.GetString("db_url")
-	if url == "" {
-		url = os.Getenv("DB_URL")
+	rawURL := viper.GetString("db_url")
+	if rawURL == "" {
+		rawURL = os.Getenv("DB_URL")
 	}
-	if url == "" {
+	if rawURL == "" {
 		return "", fmt.Errorf("db_url not set. Set it in ~/.bbscope.yaml or via DB_URL environment variable")
 	}
-	return url, nil
+
+	pw := viper.GetString("db_password")
+	if pw == "" {
+		pw = os.Getenv("DB_PASSWORD")
+	}
+	if pw != "" {
+		return buildKVDSN(rawURL, pw)
+	}
+	return rawURL, nil
+}
+
+// buildKVDSN extracts connection parameters from a postgres URL (even one whose
+// embedded password has invalid percent-encoding) and returns a libpq
+// keyword=value DSN with the supplied password injected as a raw string.
+// This sidesteps url.Parse so passwords with %, @, or other special chars work.
+func buildKVDSN(rawURL, password string) (string, error) {
+	re := regexp.MustCompile(
+		`(?i)^postgres(?:ql)?://([^:@/?#]*)(?::[^@]*)?@([^:/?#]+)(?::(\d+))?/([^?#]*)(?:\?(.*))?$`)
+	m := re.FindStringSubmatch(rawURL)
+	if m == nil {
+		return "", fmt.Errorf(
+			"cannot parse db_url %q — when using db_password, db_url must be in URL format: "+
+				"postgres://user@host:5432/dbname?sslmode=disable", rawURL)
+	}
+	user, host, port, dbname, params := m[1], m[2], m[3], m[4], m[5]
+
+	sslmode := "disable"
+	for _, kv := range strings.Split(params, "&") {
+		if strings.HasPrefix(kv, "sslmode=") {
+			sslmode = strings.TrimPrefix(kv, "sslmode=")
+		}
+	}
+	if port == "" {
+		port = "5432"
+	}
+
+	// Escape backslashes and single quotes for libpq keyword=value DSN
+	escaped := strings.ReplaceAll(password, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+
+	return fmt.Sprintf("host=%s port=%s user=%s password='%s' dbname=%s sslmode=%s options='-c search_path=public'",
+		host, port, user, escaped, dbname, sslmode), nil
 }

@@ -11,6 +11,7 @@ type PollOptions struct {
 	BountyOnly  bool
 	PrivateOnly bool
 	Categories  string
+	SkipBrief   bool // when true, brief is not fetched/updated
 }
 
 // AuthConfig carries optional authentication inputs.

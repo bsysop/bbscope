@@ -114,6 +114,26 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 
 	selectedCategories := getCategories(opts.Categories)
 
+	// Extract program brief via programOverview RSC reference.
+	// The RSC stream uses text chunks: REFID:T<byteLen>,<actual text content>
+	if !opts.SkipBrief {
+		poRegex := regexp.MustCompile(`"programOverview":"\$([a-zA-Z0-9]+)"`)
+		if m := poRegex.FindStringSubmatch(res.BodyString); len(m) > 1 {
+			refID := m[1]
+			textChunkRegex := regexp.MustCompile(regexp.QuoteMeta(refID) + `:T(\d+),`)
+			if tm := textChunkRegex.FindStringSubmatchIndex(res.BodyString); tm != nil {
+				// tm[2]:tm[3] is the length digits, content starts at tm[1]
+				lengthStr := res.BodyString[tm[2]:tm[3]]
+				var textLen int
+				fmt.Sscanf(lengthStr, "%d", &textLen)
+				contentStart := tm[1]
+				if textLen > 0 && contentStart+textLen <= len(res.BodyString) {
+					pData.Brief = res.BodyString[contentStart : contentStart+textLen]
+				}
+			}
+		}
+	}
+
 	// Extract assets array from RSC response
 	assetsRegex := regexp.MustCompile(`"assets":\[`)
 	match := assetsRegex.FindStringIndex(res.BodyString)
