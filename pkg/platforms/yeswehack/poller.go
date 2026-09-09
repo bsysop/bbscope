@@ -3,6 +3,7 @@ package yeswehack
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -65,7 +66,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 		allPublic := data[2].Array()
 		allDisabled := data[3].Array()
 
-		for i := 0; i < len(allCompanySlugs); i++ {
+		for i := range allCompanySlugs {
 			// A "disabled" program on YesWeHack is paused / no longer accepting submissions
 			// (confirmed: paris2024-bug-bounty, seine-maritime-* are returned with
 			// disabled=true). Keep it but flag it as paused (-> disabled) so its scope is
@@ -138,13 +139,7 @@ func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts plat
 		}
 
 		// Otherwise, check if the scopeType from the API is in our list of selected categories.
-		catMatches := false
-		for _, cat := range selectedCategories {
-			if cat == scopeType {
-				catMatches = true
-				break
-			}
-		}
+		catMatches := slices.Contains(selectedCategories, scopeType)
 
 		if catMatches {
 			pData.InScope = append(pData.InScope, scope.ScopeElement{
