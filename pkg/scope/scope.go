@@ -19,6 +19,7 @@ type ScopeElement struct {
 type ProgramData struct {
 	Url        string
 	Brief      string
+	Paused     bool
 	InScope    []ScopeElement
 	OutOfScope []ScopeElement
 }

@@ -793,6 +793,15 @@ func extractScopeFromEngagement(getBriefVersionDocument string, token string, sk
 		return errors.New(WAF_BANNED_ERROR)
 	}
 
+	// Detect a paused engagement. Bugcrowd marks this in the brief version document as
+	// data.engagement.state == "in_progress_paused" (vs "in_progress" when active) with a
+	// non-empty pausedReason. Flagging it lets the poller mark the program disabled while
+	// keeping its stored scope, instead of continuing to treat a paused program as active.
+	if gjson.Get(res.BodyString, "data.engagement.state").String() == "in_progress_paused" ||
+		gjson.Get(res.BodyString, "pausedReason").String() != "" {
+		pData.Paused = true
+	}
+
 	// Extract program brief (skipped on daily polls; use --brief for monthly updates).
 	if !skipBrief {
 		if pData.Brief == "" {

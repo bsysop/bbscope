@@ -17,13 +17,14 @@ import (
 
 // Poller adapts existing H1 code to the generic PlatformPoller interface.
 type Poller struct {
-	authB64 string
+	authB64   string
+	pausedSet map[string]bool
 }
 
 // NewPoller builds a HackerOne poller from username and API token.
 func NewPoller(username, token string) *Poller {
 	raw := username + ":" + token
-	return &Poller{authB64: base64.StdEncoding.EncodeToString([]byte(raw))}
+	return &Poller{authB64: base64.StdEncoding.EncodeToString([]byte(raw)), pausedSet: map[string]bool{}}
 }
 
 func (p *Poller) Name() string { return "h1" }
@@ -38,6 +39,7 @@ func (p *Poller) Authenticate(ctx context.Context, cfg platforms.AuthConfig) err
 
 func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOptions) ([]string, error) {
 	var handles []string
+	p.pausedSet = map[string]bool{}
 	currentURL := "https://api.hackerone.com/v1/hackers/programs?page%5Bsize%5D=100"
 	for {
 		res, err := whttp.SendHTTPRequest(&whttp.WHTTPReq{
@@ -68,8 +70,12 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 			// Private programs have state "soft_launched"
 			isPrivate := state == "soft_launched"
 
-			if submissionState != "open" {
-				continue // Skip inactive programs
+			// Fully-disabled (closed) or unknown-state programs are skipped, as before.
+			// A "paused" program is kept but flagged, so it is marked disabled while its
+			// scope is retained instead of being dropped and its targets deleted.
+			paused := submissionState == "paused"
+			if submissionState != "open" && !paused {
+				continue // Skip inactive/closed programs
 			}
 
 			if opts.PrivateOnly && !isPrivate {
@@ -80,6 +86,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 				continue
 			}
 
+			p.pausedSet[handle] = paused
 			handles = append(handles, handle)
 		}
 
@@ -92,7 +99,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 }
 
 func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts platforms.PollOptions) (scope.ProgramData, error) {
-	pData := scope.ProgramData{Url: "https://hackerone.com/" + handle}
+	pData := scope.ProgramData{Url: "https://hackerone.com/" + handle, Paused: p.pausedSet[handle]}
 
 	// Fetch program policy/brief (skipped on daily polls; use --brief for monthly updates).
 	if !opts.SkipBrief {

@@ -17,10 +17,11 @@ type Poller struct {
 	token       string
 	urlToID     map[string]string
 	handleToURL map[string]string
+	pausedSet   map[string]bool
 }
 
 func NewPoller() *Poller {
-	return &Poller{urlToID: map[string]string{}, handleToURL: map[string]string{}}
+	return &Poller{urlToID: map[string]string{}, handleToURL: map[string]string{}, pausedSet: map[string]bool{}}
 }
 
 func (p *Poller) Name() string { return "it" }
@@ -35,6 +36,7 @@ func (p *Poller) Authenticate(ctx context.Context, cfg platforms.AuthConfig) err
 func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOptions) ([]string, error) {
 	p.urlToID = map[string]string{}
 	p.handleToURL = map[string]string{}
+	p.pausedSet = map[string]bool{}
 	offset := 0
 	limit := 500
 	total := 0
@@ -62,8 +64,10 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 
 		records := gjson.Get(body, "records").Array()
 		for _, record := range records {
-			// Only keep Open (3) and Suspended (4) programs.
-			// Suspended programs are temporarily paused (near budget limit) but still active.
+			// Keep both Open (3) and Suspended (4) programs. Suspended is Intigriti's
+			// paused state (the pause badge in the UI); we still fetch these so we can
+			// flag them as paused (-> disabled) rather than dropping them and deleting
+			// their stored scope.
 			statusID := record.Get("status.id").Int()
 			if statusID != 3 && statusID != 4 {
 				continue
@@ -90,6 +94,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 				if (opts.BountyOnly && maxBounty != 0) || !opts.BountyOnly {
 					p.urlToID[handle] = id
 					p.handleToURL[handle] = url
+					p.pausedSet[handle] = statusID == 4
 					handles = append(handles, handle)
 				}
 			}
@@ -104,12 +109,14 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 }
 
 func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts platforms.PollOptions) (scope.ProgramData, error) {
-	pData := scope.ProgramData{Url: p.handleToURL[handle]}
+	pData := scope.ProgramData{Url: p.handleToURL[handle], Paused: p.pausedSet[handle]}
 	id := p.urlToID[handle]
 	if id == "" {
 		// Ensure map is built at least once
 		if _, err := p.ListProgramHandles(ctx, opts); err == nil {
 			id = p.urlToID[handle]
+			pData.Url = p.handleToURL[handle]
+			pData.Paused = p.pausedSet[handle]
 		}
 	}
 	if id == "" {

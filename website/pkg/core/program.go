@@ -86,6 +86,10 @@ func programDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A disabled program with no live targets was removed from the platform (scope is
+	// reconstructed from history below); a disabled program that still has targets is paused.
+	historical := program.Disabled && len(targets) == 0
+
 	// For removed programs with no targets in targets_raw, reconstruct from scope_changes history
 	if len(targets) == 0 && program.Disabled {
 		targets, err = db.ListProgramTargetsFromHistory(ctx, program.Platform, program.Handle)
@@ -125,7 +129,7 @@ func programDetailHandler(w http.ResponseWriter, r *http.Request) {
 		title,
 		description,
 		Navbar("/scope"),
-		ProgramDetailContent(program, targets, changes, programURL, inScopeCount, oosCount, isBBP),
+		ProgramDetailContent(program, targets, changes, programURL, inScopeCount, oosCount, isBBP, historical),
 		FooterEl(),
 		canonicalURL,
 		false,
@@ -133,7 +137,7 @@ func programDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ProgramDetailContent renders the program detail page content.
-func ProgramDetailContent(program *storage.Program, targets []storage.ProgramTarget, changes []storage.Change, programURL string, inScopeCount, oosCount int, isBBP bool) g.Node {
+func ProgramDetailContent(program *storage.Program, targets []storage.ProgramTarget, changes []storage.Change, programURL string, inScopeCount, oosCount int, isBBP bool, historical bool) g.Node {
 	var inScope, outOfScope []storage.ProgramTarget
 	for _, t := range targets {
 		if t.InScope {
@@ -158,8 +162,8 @@ func ProgramDetailContent(program *storage.Program, targets []storage.ProgramTar
 			Span(Class("text-zinc-200"), g.Text(displayHandle(program.Platform, program.Handle))),
 		),
 
-		// Program removed banner
-		g.If(program.Disabled,
+		// Program removed banner (only for truly-removed programs — scope is historical)
+		g.If(historical,
 			Div(Class("mb-8 rounded-xl border border-red-800/50 bg-red-900/20 px-5 py-4 flex items-start gap-3"), g.Attr("data-nosnippet", ""),
 				Div(Class("flex-shrink-0 mt-0.5"),
 					g.Raw(`<svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`),
@@ -167,6 +171,19 @@ func ProgramDetailContent(program *storage.Program, targets []storage.ProgramTar
 				Div(
 					Div(Class("font-semibold text-red-300 text-sm"), g.Text("Program Removed")),
 					P(Class("text-red-200/70 text-sm mt-1 leading-relaxed"), g.Text("This program is no longer available on "+capitalizedPlatform(program.Platform)+". The scope data shown below is historical and may not reflect the final state of the program.")),
+				),
+			),
+		),
+
+		// Program paused banner (disabled but still live — scope retained)
+		g.If(program.Disabled && !historical,
+			Div(Class("mb-8 rounded-xl border border-amber-800/50 bg-amber-900/20 px-5 py-4 flex items-start gap-3"), g.Attr("data-nosnippet", ""),
+				Div(Class("flex-shrink-0 mt-0.5"),
+					g.Raw(`<svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`),
+				),
+				Div(
+					Div(Class("font-semibold text-amber-300 text-sm"), g.Text("Program Paused")),
+					P(Class("text-amber-200/70 text-sm mt-1 leading-relaxed"), g.Text("This program is currently paused on "+capitalizedPlatform(program.Platform)+" and may not be accepting new submissions. The scope shown below reflects its last known state.")),
 				),
 			),
 		),

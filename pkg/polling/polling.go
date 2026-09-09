@@ -250,7 +250,7 @@ func processOneProgram(
 		return nil, err
 	}
 
-	changes, err := db.UpsertProgramEntries(ctx, pd.Url, p.Name(), handle, pd.Brief, entries)
+	changes, err := db.UpsertProgramEntries(ctx, pd.Url, p.Name(), handle, pd.Brief, pd.Paused, entries)
 	if err != nil {
 		if errors.Is(err, storage.ErrAbortingScopeWipe) {
 			log.Warnf("Potential scope wipe detected for program %s. Skipping update.", pd.Url)

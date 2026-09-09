@@ -15,7 +15,7 @@ Stores one row per program across all platforms.
 | `first_seen_at` | TIMESTAMP | When the program was first polled |
 | `last_seen_at` | TIMESTAMP | Last successful poll |
 | `strict` | INTEGER | Whether scope changes should be treated strictly |
-| `disabled` | INTEGER | 1 if program was removed from the platform |
+| `disabled` | INTEGER | 1 if the program is inactive — removed from the platform, or paused/suspended (scope retained) |
 | `is_ignored` | INTEGER | 1 if user has ignored this program |
 
 ### `targets_raw`
@@ -71,3 +71,4 @@ Changes are logged to `scope_changes` and printed to stdout.
 - **Scope wipe protection**: If an upsert would remove all targets from a program, the update is aborted (`ErrAbortingScopeWipe`). This prevents broken pollers from wiping real data.
 - **Platform-level safety**: If a platform returns 0 programs but the database has >10, the entire platform sync is skipped.
 - **Program sync**: Programs no longer returned by the platform are marked `disabled`, not deleted. Their historical data remains queryable.
+- **Paused programs**: Programs that are paused/suspended on the platform (Intigriti "Suspended", Bugcrowd `in_progress_paused`, HackerOne `submission_state=paused`, YesWeHack `disabled`) are also marked `disabled`, but keep their live `targets_raw` scope (unlike removed programs, whose targets are deleted). Asset extraction (`ListEntries` / `db get`) excludes all `disabled` programs.

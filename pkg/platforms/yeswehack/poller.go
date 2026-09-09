@@ -14,12 +14,13 @@ import (
 )
 
 type Poller struct {
-	token  string
-	bbpSet map[string]bool // tracks which handles are bounty programs
+	token     string
+	bbpSet    map[string]bool // tracks which handles are bounty programs
+	pausedSet map[string]bool // tracks which handles are paused (YWH "disabled")
 }
 
 func NewPoller(token string) *Poller {
-	return &Poller{token: token, bbpSet: map[string]bool{}}
+	return &Poller{token: token, bbpSet: map[string]bool{}, pausedSet: map[string]bool{}}
 }
 
 func (p *Poller) Name() string { return "ywh" }
@@ -42,6 +43,7 @@ func (p *Poller) Authenticate(ctx context.Context, cfg platforms.AuthConfig) err
 
 func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOptions) ([]string, error) {
 	p.bbpSet = map[string]bool{}
+	p.pausedSet = map[string]bool{}
 	var handles []string
 	var page = 1
 	var nb_pages = 2 // Init with a value > page
@@ -64,13 +66,16 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 		allDisabled := data[3].Array()
 
 		for i := 0; i < len(allCompanySlugs); i++ {
-			if allDisabled[i].Bool() {
-				continue
-			}
+			// A "disabled" program on YesWeHack is paused / no longer accepting submissions
+			// (confirmed: paris2024-bug-bounty, seine-maritime-* are returned with
+			// disabled=true). Keep it but flag it as paused (-> disabled) so its scope is
+			// retained and it is not treated as active, instead of dropping it.
+			paused := allDisabled[i].Bool()
 			if !opts.PrivateOnly || (opts.PrivateOnly && !allPublic[i].Bool()) {
 				if !opts.BountyOnly || (opts.BountyOnly && allRewarding[i].Bool()) {
 					slug := allCompanySlugs[i].Str
 					handles = append(handles, slug)
+					p.pausedSet[slug] = paused
 					if allRewarding[i].Bool() {
 						p.bbpSet[slug] = true
 					}
@@ -88,7 +93,7 @@ func (p *Poller) ListProgramHandles(ctx context.Context, opts platforms.PollOpti
 func (p *Poller) FetchProgramScope(ctx context.Context, handle string, opts platforms.PollOptions) (scope.ProgramData, error) {
 	programAPIURL := "https://api.yeswehack.com/programs/" + handle
 	programWebURL := "https://yeswehack.com/programs/" + handle
-	pData := scope.ProgramData{Url: programWebURL}
+	pData := scope.ProgramData{Url: programWebURL, Paused: p.pausedSet[handle]}
 
 	res, err := whttp.SendHTTPRequest(&whttp.WHTTPReq{
 		Method:  "GET",

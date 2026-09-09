@@ -170,7 +170,7 @@ func (d *DB) Close() error {
 }
 
 // getOrCreateProgram handles the atomic retrieval or creation of a program entry.
-func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handle, brief string) (int64, error) {
+func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handle, brief string, paused bool) (int64, error) {
 	tx, err := d.sql.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return 0, err
@@ -179,16 +179,16 @@ func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handl
 
 	var programID int64
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO programs(platform, handle, url, brief, first_seen_at, last_seen_at)
-		VALUES($1,$2,$3,$4,CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		INSERT INTO programs(platform, handle, url, brief, disabled, first_seen_at, last_seen_at)
+		VALUES($1,$2,$3,$4,$5,CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(url) DO UPDATE SET
 			platform = excluded.platform,
 			handle = excluded.handle,
 			last_seen_at = CURRENT_TIMESTAMP,
-			disabled = 0,
+			disabled = excluded.disabled,
 			brief = CASE WHEN excluded.brief != '' THEN excluded.brief ELSE programs.brief END
 		RETURNING id
-	`, platform, handle, programURL, brief)
+	`, platform, handle, programURL, brief, boolToInt(paused))
 	if err := row.Scan(&programID); err != nil {
 		return 0, fmt.Errorf("upserting program: %w", err)
 	}
@@ -196,11 +196,11 @@ func (d *DB) getOrCreateProgram(ctx context.Context, programURL, platform, handl
 	return programID, tx.Commit()
 }
 
-func (d *DB) UpsertProgramEntries(ctx context.Context, programURL, platform, handle, brief string, entries []UpsertEntry) ([]Change, error) {
+func (d *DB) UpsertProgramEntries(ctx context.Context, programURL, platform, handle, brief string, paused bool, entries []UpsertEntry) ([]Change, error) {
 	now := time.Now().UTC()
 
 	// 1. Get or create program
-	programID, err := d.getOrCreateProgram(ctx, programURL, platform, handle, brief)
+	programID, err := d.getOrCreateProgram(ctx, programURL, platform, handle, brief, paused)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get or create program: %w", err)
 	}
@@ -1118,6 +1118,9 @@ func (d *DB) ListEntries(ctx context.Context, opts ListOptions) ([]Entry, error)
 	if !opts.IncludeIgnored {
 		where += " AND p.is_ignored = 0"
 	}
+	// Exclude disabled programs (removed OR paused) from asset extraction. Paused programs
+	// retain their targets_raw, so without this their scope would still leak into `db get`.
+	where += " AND p.disabled = 0"
 	if !opts.Since.IsZero() {
 		if opts.RawMode {
 			where += fmt.Sprintf(" AND t.last_seen_at >= $%d", argIdx)
